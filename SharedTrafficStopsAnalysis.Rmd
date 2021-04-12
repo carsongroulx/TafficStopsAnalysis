@@ -1,0 +1,626 @@
+---
+title: "Traffic Stops Analysis Shared Code"
+author: "Carson Groulx"
+date: "4/8/2021"
+output: html_document
+---
+
+Load, clean, combine data
+```{r}
+#Load data pulled from Charlotte Open Data Portal
+df1 = Officer_Traffic_Stops_Just
+df2 = Officer_Traffic_Stops
+
+#Fields of interest
+fields = c("Month_of_Stop", "Reason_for_Stop", "Officer_Race", "Officer_Gender", "Officer_Years_of_Service",
+           "Driver_Race", "Driver_Gender", "Driver_Age", "Was_a_Search_Conducted", "Result_of_Stop")
+
+#All rows with missing values are removed
+df1 = na.omit(df1)
+df2 = na.omit(df2)
+
+#Selecting fields of interest
+df1 = df1[,fields]
+df2 = df2[,fields]
+
+#Combining data sets
+df = rbind(df1, df2)
+
+#Copy of data frame with all races included
+all.races.df = df
+
+#Restricts data frame to instances with only Black or White drivers
+df = df[df$Driver_Race%in%c('Black', 'White'), ]
+```
+
+Fixes issue where values for Reason_for_Stop contain empty spaces at the end of each reason.
+This issue was found in the 2019/2020 data set.
+```{r}
+library(stringr)
+
+df$Reason_for_Stop = str_squish(df$Reason_for_Stop)
+all.races.df$Reason_for_Stop = str_squish(all.races.df$Reason_for_Stop)
+```
+
+Common variables used throughout different chunks
+```{r}
+#grouping reason for stop
+investigatory = c("Vehicle Regulatory", "Vehicle Equipment", "SeatBelt", "Investigation")
+safety = c("Speeding", "Safe Movement", "Stop Light/Sign", "Driving While Impaired")
+check = c("CheckPoint")
+#indicies
+i.search = df$Was_a_Search_Conducted=="Yes"
+i.investigatory = df$Reason_for_Stop %in% investigatory
+i.safety = df$Reason_for_Stop %in% safety
+i.check = df$Reason_for_Stop %in% check
+i.arrest = df$Result_of_Stop %in% c('Arrest')
+i.citation = df$Result_of_Stop %in% c('Citation Issued')
+i.under25 = df$Driver_Age <=25 & df$Driver_Age >=18
+i.over25 = df$Driver_Age >25 & df$Driver_Age <= 65
+i.black = df$Driver_Race == 'Black'
+i.white = df$Driver_Race == 'White'
+groups = c("Black Female", "White Female", "Black Male", "White Male")
+```
+
+Pareto Charts for driver and officer race distributions
+```{r}
+#install.packages("qcc")
+library(qcc)
+
+#counts of officers and drivers
+n.bla.driver = sum(all.races.df$Driver_Race=='Black')
+n.whi.driver = sum(all.races.df$Driver_Race=='White')
+n.asi.driver = sum(all.races.df$Driver_Race=='Asian')
+n.nat.driver = sum(all.races.df$Driver_Race=='Native American')
+
+n.2or.officer = sum(all.races.df$Officer_Race=='2 or More')
+n.ame.officer = sum(all.races.df$Officer_Race=='American Indian/Alaska Native')
+n.asi.officer = sum(all.races.df$Officer_Race=='Asian / Pacific Islander')
+n.his.officer = sum(all.races.df$Officer_Race=='Hispanic/Latino')
+n.nat.officer = sum(all.races.df$Officer_Race=='Native Hawaiian/Oth Pac Island')
+n.not.officer = sum(all.races.df$Officer_Race=='Not Specified')
+n.bla.officer = sum(all.races.df$Officer_Race=='Black/African American')
+n.whi.officer = sum(all.races.df$Officer_Race=='White')
+
+driver.races = c("Black", "White", "Asian", "Native American")
+officer.races = c('2+', 'Ame.Ind./Ala.N.', 'Asian/Pac. Islander', 'Black', 'Hispanic/Latino', 'N.Haw./Other Pac. Isl.', 'Not Specified', 'White')
+
+driver.counts = c(n.bla.driver, n.whi.driver, n.asi.driver, n.nat.driver)
+officer.counts = c(n.2or.officer, n.ame.officer, n.asi.officer, n.bla.officer, n.his.officer, n.nat.officer, n.not.officer, n.whi.officer)
+
+driver.pct = round(driver.counts/sum(driver.counts)*100)
+officer.pct = round(officer.counts/sum(officer.counts)*100)
+
+driver.races = paste(driver.races, driver.pct) 
+driver.races = paste(driver.races,"%")
+officer.races = paste(officer.races, officer.pct) 
+officer.races = paste(officer.races,"%") 
+
+names(driver.counts) = driver.races
+names(officer.counts) = officer.races
+
+pareto.chart(driver.counts, main = "Driver proportions by race", col = c(1:5))
+pareto.chart(officer.counts, main = "Officer proportions by race", col = c(1:8))
+```
+
+Reason for stop
+```{r}
+races = c("Black", "White")
+colors = c(1:length(races))
+
+#Bar chart for proportions of stops with a search conducted. Bases are within each racial group.
+reasons.base = table(df$Driver_Race[i.investigatory |
+i.safety | i.check])
+reasons.investigatory = table(df$Driver_Race[i.investigatory])
+reasons.safety = table(df$Driver_Race[i.safety])
+reasons.check = table(df$Driver_Race[i.check])
+
+investigatory.p = reasons.investigatory / reasons.base
+safety.p = reasons.safety / reasons.base
+check.p = reasons.check / reasons.base
+
+mat.reasons.p = matrix(c(investigatory.p, safety.p, check.p), ncol = 3)
+
+barplot(mat.reasons.p, beside = T, col = colors,
+        names.arg = c("Investigatory", "Safety", "Checkpoint"),
+        ylab = "Proportions of stops", main = "Reason for stop",
+        legend = races, 
+        args.legend = list(title = "Races", x = "topright", pch = 15, col = colors, bty = 'n')
+)
+
+#Bar chart for proportions above compared: Black/White
+investigatory.compared = investigatory.p['Black'] / investigatory.p['White']
+safety.compared = safety.p['Black'] / safety.p['White']
+check.compared = check.p['Black'] / check.p['White']
+
+mat.reasons.compare = matrix(c(investigatory.compared, safety.compared, check.compared), ncol = 3)
+
+barplot(mat.reasons.compare, beside = T, col = 'black',
+        names.arg = c("Investigatory", "Safety", "Checkpoint"),
+        ylab = "Proportions", xlab = "Black / White", main = "Reasons for Stops Compared")
+
+abline(h = c(1))
+
+# hyp testing for above
+reasons.investigatory.black = reasons.investigatory["Black"]
+reasons.investigatory.white = reasons.investigatory["White"]
+reasons.base.black = reasons.base['Black']
+reasons.base.white = reasons.base['White']
+
+print('Investigatory')
+prop.test(
+x = c(reasons.investigatory.black, reasons.investigatory.white),
+n = c(reasons.base.black, reasons.base.white)
+)
+
+reasons.safety.black = reasons.safety["Black"]
+reasons.safety.white = reasons.safety["White"]
+
+print('Safety')
+prop.test(
+x = c(reasons.safety.black, reasons.safety.white),
+n = c(reasons.base.black, reasons.base.white)
+)
+
+reasons.check.black = reasons.check["Black"]
+reasons.check.white = reasons.check["White"]
+
+print('Checkpoint')
+prop.test(
+x = c(reasons.check.black, reasons.check.white),
+n = c(reasons.base.black, reasons.base.white)
+)
+
+#Broken down by gender
+colors = c('yellow', 'purple', 'green', 'red')
+
+reasons.base.genders = table(df$Driver_Race[i.investigatory | i.safety | i.check], 
+                             df$Driver_Gender[i.investigatory | i.safety | i.check])
+
+investigatory.genders.p = table(df$Driver_Race[i.investigatory], df$Driver_Gender[i.investigatory]) / reasons.base.genders
+safety.genders.p = table(df$Driver_Race[i.safety], df$Driver_Gender[i.safety]) / reasons.base.genders
+check.genders.p = table(df$Driver_Race[i.check], df$Driver_Gender[i.check]) / reasons.base.genders
+
+mat.reasons.genders.p = matrix(c(investigatory.genders.p, safety.genders.p, check.genders.p), ncol = 3)
+
+barplot(mat.reasons.genders.p, beside = T, col = colors,
+        names.arg = c("Investigatory", "Safety", "Checkpoint"),
+        ylab = "Proportions of stops", main = "Reason for stop",
+        legend = groups,
+        args.legend = list(x = "topright", pch = 15, col = colors, bty = 'n')
+)
+
+#Above compared: other/Black males
+investigatory.genders.compared = c(
+investigatory.genders.p['Black', 'Female'] / investigatory.genders.p['Black', 'Male'],
+investigatory.genders.p['White', 'Female'] / investigatory.genders.p['Black', 'Male'],
+investigatory.genders.p['Black', 'Male'] / investigatory.genders.p['Black', 'Male'],
+investigatory.genders.p['White', 'Male'] / investigatory.genders.p['Black', 'Male']
+)
+
+safety.genders.compared = c(
+safety.genders.p['Black', 'Female'] / safety.genders.p['Black', 'Male'],
+safety.genders.p['White', 'Female'] / safety.genders.p['Black', 'Male'],
+safety.genders.p['Black', 'Male'] / safety.genders.p['Black', 'Male'],
+safety.genders.p['White', 'Male'] / safety.genders.p['Black', 'Male']
+)
+
+check.genders.compared = c(
+check.genders.p['Black', 'Female'] / check.genders.p['Black', 'Male'],
+check.genders.p['White', 'Female'] / check.genders.p['Black', 'Male'],
+check.genders.p['Black', 'Male'] / check.genders.p['Black', 'Male'],
+check.genders.p['White', 'Male'] / check.genders.p['Black', 'Male']
+)
+
+mat.reasons.genders.compare = matrix(c(investigatory.genders.compared, 
+                                       safety.genders.compared, 
+                                       check.genders.compared), 
+                                     ncol = 3)
+
+barplot(mat.reasons.genders.compare, beside = T, col = colors,
+        names.arg = c("Investigatory", "Safety", "Checkpoint"),
+        ylab = "Proportions", xlab = "Other / Black Male", main = "Reason for stop Compared",
+        legend = groups,
+        args.legend = list(x = "topleft", pch = 15, col = colors, bty = 'n', cex = .8)
+)
+
+#reduced to stops with searches
+#omitted checkpoints due to infrequency
+reasons.base.searches = table(df$Driver_Race[(i.investigatory | i.safety) & i.search], 
+                              df$Driver_Gender[(i.investigatory | i.safety) & i.search])
+
+investigatory.searches.p = table(df$Driver_Race[i.investigatory & i.search], 
+                                 df$Driver_Gender[i.investigatory & i.search]) / reasons.base.searches
+
+safety.searches.p = table(df$Driver_Race[i.safety & i.search], 
+                          df$Driver_Gender[i.safety & i.search]) / reasons.base.searches
+
+mat.reasons.searches.p = matrix(c(investigatory.searches.p, safety.searches.p), ncol = 2)
+
+barplot(mat.reasons.searches.p, beside = T, col = colors,
+        names.arg = c("Investigatory", "Safety"),
+        ylab = "Proportions of stops", main = "Reason for stop in searches",
+        legend = groups,
+        args.legend = list(x = "topright", pch = 15, col = colors, bty = 'n')
+)
+
+#above compared: other/ Black Male
+investigatory.searches.genders.compared = c(
+investigatory.searches.p['Black', 'Female'] / investigatory.searches.p['Black', 'Male'],
+investigatory.searches.p['White', 'Female'] / investigatory.searches.p['Black', 'Male'],
+investigatory.searches.p['Black', 'Male'] / investigatory.searches.p['Black', 'Male'],
+investigatory.searches.p['White', 'Male'] / investigatory.searches.p['Black', 'Male']
+)
+
+safety.searches.genders.compared = c(
+safety.searches.p['Black', 'Female'] / safety.searches.p['Black', 'Male'],
+safety.searches.p['White', 'Female'] / safety.searches.p['Black', 'Male'],
+safety.searches.p['Black', 'Male'] / safety.searches.p['Black', 'Male'],
+safety.searches.p['White', 'Male'] / safety.searches.p['Black', 'Male']
+)
+
+mat.searches.genders.compared = matrix(c(investigatory.searches.genders.compared, 
+                                         safety.searches.genders.compared), 
+                                       ncol = 2)
+
+barplot(mat.searches.genders.compared, beside = T, col = colors,
+        names.arg = c("Investigatory", "Safety"),
+        ylab = "Proportions of stops", xlab = "Other / Black Male", main = "Reason for stop in searches Compared",
+        legend = groups,
+        args.legend = list(x = "topleft", pch = 15, col = colors, bty = 'n')
+)
+```
+
+Results of Stops
+```{r}
+results = c('Arrest', 'Citation Issued', 'No Action Taken',  'Verbal Warning', 'Written Warning')
+colors = c(1:length(results))
+
+#Bar charts for results of stop (counts), grouped by race only
+results.black = table(df$Result_of_Stop[i.black])
+results.white = table(df$Result_of_Stop[i.white])
+
+mat.results.race = matrix(c(results.black, results.white), ncol = 2)
+
+barplot(mat.results.race, beside = T, col = colors,
+        names.arg =  c("Black", "White"),
+        xlab = "Result of stop",
+        ylab = "Count of stops", 
+        main = "Result of stop (counts)",
+        legend = results,
+        args.legend = list(title = "Results", x = "topleft", pch = 15, col = colors, bty = 'n', cex = .60))
+
+#Bar charts for results of stop (proportions), grouped by race only
+results.black.p = results.black / sum(results.black)
+results.white.p = results.white / sum(results.white)
+
+mat.results.race.p = matrix(c(results.black.p, results.white.p), ncol = 2)
+
+barplot(mat.results.race.p, beside = T, col = colors,
+        names.arg =  c("Black", "White"),
+        xlab = "Result of stop",
+        ylab = "Proportions", 
+        main = "Result of stop (Proportions)",
+        legend = results,
+        args.legend = list(title = "Results", x = "topleft", pch = 15, col = colors, bty = 'n', cex = .60))
+
+#Bar charts for results of stop compared White / Black (proportions), grouped by race only
+
+results.race.compared = results.white.p / results.black.p
+
+barplot(results.race.compared, beside = T, col = colors,
+        names.arg =  c("White / Black"),
+        xlab = "Result of stop",
+        ylab = "Proportions", 
+        main = "Result of stop Compared (Proportions)",
+        legend = results,
+        args.legend = list(title = "Results", x = "topleft", pch = 15, col = colors, bty = 'n', cex = .60))
+abline(h=c(1))
+
+#Bar chart of total counts of each result of stop, grouped by race and gender
+results.black.gender = table(df$Result_of_Stop[i.black], df$Driver_Gender[i.black])
+results.white.gender = table(df$Result_of_Stop[i.white], df$Driver_Gender[i.white])
+
+results.black.female = results.black.gender[,"Female"]
+results.white.female = results.white.gender[,"Female"]
+results.black.male = results.black.gender[,"Male"]
+results.white.male = results.white.gender[,"Male"]
+
+mat.results.race.gender = matrix(c(results.black.female, results.white.female, results.black.male, results.white.male), ncol = 4)
+
+barplot(mat.results.race.gender, beside = T, col = colors,
+        names.arg =  groups,
+        xlab = "Result of stop",
+        ylab = "Count of stops", 
+        main = "Result of stop (counts)",
+        legend = results,
+        args.legend = list(title = "Results", x = "topleft", pch = 15, col = colors, bty = 'n', cex = .60))
+
+
+#Bar chart of proportions of each result of stop, grouped by race and gender
+results.black.female.p = results.black.gender[,'Female']/sum(results.black.gender[,'Female'])
+results.white.female.p = results.white.gender[,'Female']/sum(results.white.gender[,'Female'])
+results.black.male.p = results.black.gender[,'Male']/sum(results.black.gender[,'Male'])
+results.white.male.p = results.white.gender[,'Male']/sum(results.white.gender[,'Male'])
+
+mat.results.race.gender.p = matrix(c(results.black.female.p, results.white.female.p,results.black.male.p, results.white.male.p), ncol = 4)
+
+barplot(mat.results.race.gender.p, beside = T, col = colors,
+        names.arg = groups,
+        xlab = "Result of stop",
+        ylab = "Proportions", 
+        main = "Results of stop (proportions)",
+        legend = results,
+        args.legend = list(title = "Results", x = "topleft", pch = 15, col = colors, bty = 'n', cex = .60))
+
+#above compared: other / Black male
+mat.results.race.gender.compared = matrix(c(results.black.female.p / results.black.male.p,
+                                results.white.female.p / results.black.male.p,
+                                results.black.male.p / results.black.male.p,
+                                results.white.male.p / results.black.male.p), ncol = 4)
+
+barplot(mat.results.race.gender.compared, beside = T, col = colors,
+        names.arg = groups,
+        xlab = "Other / Black male",
+        ylab = "Proportions", 
+        main = "Results of stop compared",
+        legend = results,
+        args.legend = list(title = "Results", x = "topleft", pch = 15, col = colors, bty = 'n', cex = .60))
+abline(h=c(1))
+
+```
+
+Searches
+```{r}
+races = c("Black", "White")
+colors = c(1:length(races))
+
+#Bar chart for stops with a search conducted (counts)
+base.race = table(df$Driver_Race)
+
+search.race = table(df$Driver_Race[i.search])
+search.race.investigatory = table(df$Driver_Race[i.search & i.investigatory])
+search.race.safety = table(df$Driver_Race[i.search & i.safety])
+search.race.check = table(df$Driver_Race[i.search & i.check])
+
+mat.search.race.reason = matrix(c(search.race, search.race.investigatory, 
+                                    search.race.safety, search.race.check), 
+                                  ncol = 4)
+
+barplot(mat.search.race.reason, beside = T, col = colors,
+        names.arg = c("All", "Investigatory", "Safety", "Checkpoint"),
+        xlab = "Reason for stop",
+        ylab = "Proportions",
+        main = "Search rates (Counts)",
+        legend = races,
+        args.legend = list(title = "Races", x = "topright", pch = 15, col = colors, bty = 'n'))
+
+#Bar chart for stops with a search conducted (proportions) 
+search.race.p = search.race/base.race
+search.race.investigatory.p = search.race.investigatory/base.race
+search.race.safety.p = search.race.safety/base.race
+search.race.check.p = search.race.check/base.race
+
+mat.search.race.reason.p = matrix(c(search.race.p, search.race.investigatory.p, 
+                                    search.race.safety.p, search.race.check.p), 
+                                  ncol = 4)
+
+barplot(mat.search.race.reason.p, beside = T, col = colors,
+        names.arg = c("All", "Investigatory", "Safety", "Checkpoint"),
+        xlab = "Reason for stop",
+        ylab = "Proportions",
+        main = "Search rates (Proportions)",
+        legend = races,
+        args.legend = list(title = "Races", x = "topright", pch = 15, col = colors, bty = 'n'))
+
+#Bar chart for proportions above compared. White / Black
+races = c("Black/White")
+colors = c(1:length(races))
+
+search.race.compare = search.race.p['White']/search.race.p['Black']
+search.race.investigatory.compare = search.race.investigatory.p['White']/search.race.investigatory.p['Black']
+search.race.safety.compare = search.race.safety.p['White']/search.race.safety.p['Black']
+search.race.check.compare = search.race.check.p['White']/search.race.check.p['Black']
+mat.search.race.reason.compare = matrix(c(search.race.compare, search.race.investigatory.compare,
+                                          search.race.safety.compare, search.race.check.compare), ncol = 4)
+
+barplot(mat.search.race.reason.compare, beside = T, col = colors,
+        names.arg = c("All", "Investigatory", "Safety", "Checkpoint"),
+        xlab = "White / Black",
+        ylab = "Proportions",
+        main = "Search Rates Compared")
+
+
+#Bar charts for proportions of searches with Arrest
+races = c("Black", "White")
+colors = c(1:length(races))
+
+search.race.arrest.p = (table(df$Driver_Race[i.search & i.arrest]))/
+          (table(df$Driver_Race[i.search]))
+
+search.race.arrest.investigatory.p = (table(df$Driver_Race[i.search & i.arrest & i.investigatory]))/
+          (table(df$Driver_Race[i.search & i.investigatory]))
+
+search.race.arrest.safety.p = (table(df$Driver_Race[i.search & i.arrest & i.safety]))/
+          (table(df$Driver_Race[i.search & i.safety]))
+
+search.race.arrest.check.p = (table(df$Driver_Race[i.search & i.arrest & i.check]))/
+          (table(df$Driver_Race[i.search & i.check]))
+
+mat.search.arrest.race.reason.p = matrix(c(search.race.arrest.p, search.race.arrest.investigatory.p, 
+                    search.race.arrest.safety.p, search.race.arrest.check.p), ncol = 4)
+
+barplot(mat.search.arrest.race.reason.p, beside = T, col = colors,
+        names.arg = c("All", "Investigatory", "Safety", "Checkpoint"),
+        xlab = "Reason for stop",
+        ylab = "Proportions", ylim = c(0, 1),
+        main = "Arrest Rate with Search",
+        legend = races,
+        args.legend = list(title = "Races", x = "topleft", pch = 15, col = colors, bty = 'n', cex = .8))
+
+#Bar charts for proportions of searches with Citations
+races = c("Black", "White")
+colors = c(1:length(races))
+
+search.race.citation.p = (table(df$Driver_Race[i.search & i.citation]))/
+          (table(df$Driver_Race[i.search]))
+
+search.race.citation.investigatory.p = (table(df$Driver_Race[i.search & i.citation & i.investigatory]))/
+          (table(df$Driver_Race[i.search & i.investigatory]))
+
+search.race.citation.safety.p = (table(df$Driver_Race[i.search & i.citation & i.safety]))/
+          (table(df$Driver_Race[i.search & i.safety]))
+
+search.race.citation.check.p = (table(df$Driver_Race[i.search & i.citation & i.check]))/
+          (table(df$Driver_Race[i.search & i.check]))
+
+mat.search.citation.race.reason.p = matrix(c(search.race.citation.p, search.race.citation.investigatory.p, 
+                    search.race.citation.safety.p, search.race.citation.check.p), ncol = 4)
+
+barplot(mat.search.citation.race.reason.p , beside = T, col = colors,
+        names.arg = c("All", "Investigatory", "Safety", "Checkpoint"),
+        xlab = "Reason for stop",
+        ylab = "Proportions", ylim = c(0, 1),
+        main = "Citation Rate with Search",
+        legend = races,
+        args.legend = list(title = "Races", x = "topleft", pch = 15, col = colors, bty = 'n', cex = .8))
+
+
+
+#Bar charts for proportions of searches with Arrest. Include gender and age
+colors = c('yellow','green','purple','red')
+
+#all
+base.race.gender = table(df$Driver_Race, df$Driver_Gender)
+search.race.gender = table(df$Driver_Race[i.search], df$Driver_Gender[i.search])
+
+search.race.gender.p = search.race.gender/base.race.gender
+arrest.race.gender.p = (table(df$Driver_Race[i.arrest], df$Driver_Gender[i.arrest])/search.race.gender)
+
+search.arrest.race.gender.p = (table(df$Driver_Race[i.search & i.arrest], df$Driver_Gender[i.search & i.arrest])/search.race.gender)
+
+search.citation.race.gender.p = (table(df$Driver_Race[i.search & i.citation], df$Driver_Gender[i.search & i.citation])/search.race.gender)
+
+#18-25
+search.race.gender.under25 = table(df$Driver_Race[i.search & i.under25], df$Driver_Gender[i.search & i.under25])
+search.race.gender.under25.p = search.race.gender.under25/table(df$Driver_Race[i.under25], df$Driver_Gender[i.under25])
+
+search.arrest.race.gender.under25.p = (table(df$Driver_Race[i.search&i.arrest&i.under25], df$Driver_Gender[i.search&i.arrest&i.under25]))/search.race.gender.under25
+
+search.citation.race.gender.under25.p = (table(df$Driver_Race[i.search&i.citation&i.under25], df$Driver_Gender[i.search&i.citation&i.under25]))/search.race.gender.under25
+#26-65
+search.race.gender.over25 = table(df$Driver_Race[i.search & i.over25], df$Driver_Gender[i.search & i.over25])
+search.race.gender.over25.p = search.race.gender.over25/table(df$Driver_Race[i.over25], df$Driver_Gender[i.over25])
+
+search.arrest.race.gender.over25.p = (table(df$Driver_Race[i.search&i.arrest&i.over25], df$Driver_Gender[i.search&i.arrest&i.over25]))/search.race.gender.over25
+
+search.citation.race.gender.over25.p = (table(df$Driver_Race[i.search&i.citation&i.over25], df$Driver_Gender[i.search&i.citation&i.over25]))/search.race.gender.over25
+
+#searches by race gender age
+mat.search.race.gender.age.p = matrix(c(search.race.gender.p, search.race.gender.under25.p, search.race.gender.over25.p), ncol = 3)
+
+barplot(mat.search.race.gender.age.p, beside = T, main = 'Search Rates', col = 1:4, names.arg = c('All', '18-25', '26-65'), legend = groups,
+       args.legend = list(title = "Groups", x = "topright", pch = 15, col = 1:4, bty = 'n'))
+
+#searches with arrest by race gender age
+mat.search.arrest.race.gender.age.p = matrix(c(search.arrest.race.gender.p, search.arrest.race.gender.under25.p, search.arrest.race.gender.over25.p), ncol = 3)
+
+barplot(mat.search.arrest.race.gender.age.p, beside = T, main = 'Arrest Rates in Searches',  col = 1:4, names.arg = c('All', '18-25', '26-65'), 
+legend = groups,       args.legend = list(title = "Genders", x = 'top', pch = 15, col = 1:4, bty = 'n'))
+
+#searches with citation by race gender age
+mat.search.citation.race.gender.age.p = matrix(c(search.citation.race.gender.p, search.citation.race.gender.under25.p, search.citation.race.gender.over25.p), ncol = 3)
+
+barplot(mat.search.citation.race.gender.age.p, beside = T,  col = 1:4, main = 'Citation Rates in Searches', names.arg = c('All', '18-25', '26-65'), 
+        legend = groups, args.legend = list(title = "Genders", x = "topright", pch = 15, col = 1:4, bty = 'n'))
+
+```
+
+Proportions of each driver race stopped binned on officer's years of service. Here I choose to include only up to year 31 because years after 31 contain so few instances.
+```{r}
+#Values subject to change depending on how many years of service will be charted and which races are to be charted 
+startYear = 1
+endYear = 31
+races = c("Black","White")
+
+#Code from here below should not need change, unless to manipulate the charts or to produce more or less charts in the instance that the races change
+years = str_split(startYear:endYear, ",")
+servicebyrace = matrix(nrow = endYear, ncol = length(races))
+colnames(servicebyrace) = races
+
+for (i in(1:endYear)) {
+  for(j in(1:length(races))){
+    servicebyrace[i, j] = sum(df$Driver_Race == races[j] & df$Officer_Years_of_Service == years[i])/sum(df$Officer_Years_of_Service == years[i])
+  }
+}
+
+#plot for black and white drivers
+plot(c(startYear:endYear), servicebyrace[startYear:endYear, "Black"], 
+     xlim = c(startYear, endYear), ylim = c(.2,.8), 
+     xlab = 'Years of Service', ylab = 'Proportion of stops', main = "Fig 4: Driver's race binned on officer years of service", 
+     col = 'blue')
+lines(c(startYear:endYear), servicebyrace[startYear:endYear, "Black"], col = 'blue')
+abline(lm(servicebyrace[startYear:endYear, "Black"]~c(startYear:endYear)), col = 'blue', lty = 4)
+points(c(startYear:endYear), servicebyrace[startYear:endYear, "White"], col = 'green')
+lines(c(startYear:endYear), servicebyrace[startYear:endYear, "White"], col = 'green')
+abline(lm(servicebyrace[startYear:endYear, "White"]~c(startYear:endYear)), col = 'green', lty = 4)
+legend("topright", c("Black","White"), col = c('blue', 'green'), pch = 15, bty = 'n')
+
+```
+
+Logistic Regression
+```{r}
+library("ROCR")
+library('caTools')
+library('pscl')
+library('dominanceanalysis')
+library('blorr')
+library('Metrics')
+
+#Recoding and restricting data set.
+#Officers are White or non-White
+#reasons for stop are only investigatory or safety. Others are removed.
+ndf = df[df$Reason_for_Stop%in%investigatory|df$Reason_for_Stop%in%safety, ]
+
+i.ndf.investigatory = ndf$Reason_for_Stop%in%investigatory
+i.ndf.safety = ndf$Reason_for_Stop%in%safety
+
+ndf$Reason_for_Stop[i.ndf.investigatory] = 'Investigatory'
+ndf$Reason_for_Stop[i.ndf.safety] = 'Safety'
+
+ndf$Officer_Race[ndf$Officer_Race!='White'] = "Not White"
+
+#Variables converted to factor types
+ndf$Was_a_Search_Conducted = as.factor(ndf$Was_a_Search_Conducted)
+ndf$Driver_Race = as.factor(ndf$Driver_Race)
+ndf$Driver_Gender = as.factor(ndf$Driver_Gender)
+ndf$Result_of_Stop = as.factor(ndf$Result_of_Stop)
+ndf$Reason_for_Stop = as.factor(ndf$Reason_for_Stop)
+ndf$Officer_Race = as.factor(ndf$Officer_Race)
+ndf$Officer_Gender = as.factor(ndf$Officer_Gender)
+
+#predicting search conducted
+lm = glm(Was_a_Search_Conducted~relevel(Driver_Race, 'White')+Driver_Gender+Reason_for_Stop+Officer_Race+Officer_Gender+Officer_Years_of_Service+Driver_Age, data = ndf, family = binomial(link='logit'))
+exp(coef(lm))
+summary(lm)
+anova(lm, test = 'Chisq')
+
+#model accuracy
+split = sample.split(ndf$Was_a_Search_Conducted, SplitRatio = .8)
+train = ndf[split,]
+test = ndf[!split, ]
+
+lm.train = glm(Was_a_Search_Conducted~Driver_Race+Driver_Gender+Reason_for_Stop+Officer_Race+Officer_Gender+Officer_Years_of_Service+Driver_Age, data = train, family = binomial(link='logit'))
+
+fit.res = predict(lm.train, newdata = test, type = 'response')
+pr = prediction(fit.res, test$Was_a_Search_Conducted)
+prf = performance(pr, measure = 'tpr', x.measure = 'fpr')
+plot(prf)
+auc = performance(pr, measure = 'auc')
+auc = auc@y.values[[1]]
+auc
+```
+
+
+
+
