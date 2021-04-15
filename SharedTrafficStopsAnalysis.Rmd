@@ -63,7 +63,7 @@ i.white = df$Driver_Race == 'White'
 groups = c("Black Female", "White Female", "Black Male", "White Male")
 ```
 
-Pareto Charts for driver and officer race distributions
+Pareto Charts for driver and officer race distributions. These will only work with the full data sets and not with the provided, cleaned and reduced data set.
 ```{r}
 #install.packages("qcc")
 library(qcc)
