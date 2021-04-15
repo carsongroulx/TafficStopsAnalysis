@@ -5,7 +5,8 @@ date: "4/8/2021"
 output: html_document
 ---
 
-Load, clean, combine data
+Load, clean, combine data. Only necessary if using uncleaned data from Charlotte Open Data Portal. If using the provided data set, just import it and 
+assign it to 'df' and skip this chunk. 
 ```{r}
 #Load data pulled from Charlotte Open Data Portal
 df1 = Officer_Traffic_Stops_Just
@@ -34,7 +35,7 @@ df = df[df$Driver_Race%in%c('Black', 'White'), ]
 ```
 
 Fixes issue where values for Reason_for_Stop contain empty spaces at the end of each reason.
-This issue was found in the 2019/2020 data set.
+This issue was found in the 2019/2020 data set. If using the provided data set, skip this chunk. 
 ```{r}
 library(stringr)
 
@@ -42,7 +43,7 @@ df$Reason_for_Stop = str_squish(df$Reason_for_Stop)
 all.races.df$Reason_for_Stop = str_squish(all.races.df$Reason_for_Stop)
 ```
 
-Common variables used throughout different chunks
+Common variables used throughout different chunks. Must run this before any below chunks.
 ```{r}
 #grouping reason for stop
 investigatory = c("Vehicle Regulatory", "Vehicle Equipment", "SeatBelt", "Investigation")
