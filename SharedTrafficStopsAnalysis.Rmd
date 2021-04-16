@@ -5,12 +5,12 @@ date: "4/8/2021"
 output: html_document
 ---
 
-Load, clean, combine data. Only necessary if using uncleaned data from Charlotte Open Data Portal. If using the provided data set, just import it and 
+Load, clean, combine data. Only necessary if using uncleaned data from Charlotte Open Data Portal. If using the provided cleaned and combined data set, just import it and 
 assign it to 'df' and skip this chunk. 
 ```{r}
 #Load data pulled from Charlotte Open Data Portal
-df1 = Officer_Traffic_Stops_Just
-df2 = Officer_Traffic_Stops
+df1 = `2016.2017TrafficStops`
+df2 = `2019.2020TrafficStops`
 
 #Fields of interest
 fields = c("Month_of_Stop", "Reason_for_Stop", "Officer_Race", "Officer_Gender", "Officer_Years_of_Service",
@@ -35,7 +35,7 @@ df = df[df$Driver_Race%in%c('Black', 'White'), ]
 ```
 
 Fixes issue where values for Reason_for_Stop contain empty spaces at the end of each reason.
-This issue was found in the 2019/2020 data set. If using the provided data set, skip this chunk. 
+This issue was found in the 2019/2020 data set. If using the provided cleaned and combined data set, skip this chunk. 
 ```{r}
 library(stringr)
 
